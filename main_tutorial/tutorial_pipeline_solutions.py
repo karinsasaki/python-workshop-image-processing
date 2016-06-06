@@ -25,6 +25,27 @@ Created on Tue Dec 22 00:12:38 2015
 
 #%%
 #------------------------------------------------------------------------------
+# SECTION 0 - SET UP
+
+# 1. Remember that you can develop this pipeline using 
+#    a) a simple text editor and running it on the terminal
+#    b) the Spyder IDE or 
+#    c) a Jupyter notebook.
+
+# 2. Make sure that all your python and image files are in the same directory, then make that directory your working directory.
+#    - On the terminal, type "cd dir_path", replacing dir_path for the path of the directory
+#    - In Spyder and Jupyter nootebook it can be done interactively.
+
+# 3. Python is continuously under development to get better and better. In some rare cases, these new improvements need to be specifically imported to be active. One such case is the division operation in Python 2.7, which has some undesired behavior for the division of integer numbers. We can easily fix this by importing the new and improved division function from Python 3. It makes sense to do this at the start of all Python 2.7 scripts.
+from __future__ import division
+
+# 4. This script consists of explanations and exercises that guide you to complete the pipeline. It is designed to give you a guided experience of what "real programming" is like. This is one of the reasons why the pre-tutorial is provided as a Jupyter Notebook, but this main tutorial is not; we, and our colleagues, mostly develop programs using a text editor and the terminal.  In that same spirit, if you already have access to the solutions, we recommend that you try to solve the tutorial alone, without looking at them. 
+
+# 5. If you are not feeling comfortable with the exercises, there is a partially-solved version that you can also follow. 
+
+
+#%%
+#------------------------------------------------------------------------------
 # SECTION 1 - IMPORT MODULES AND PACKAGES
 
 from __future__ import division    # Python 2.7 legacy
@@ -35,7 +56,12 @@ import scipy.ndimage as ndi        # Image processing package
 
 #%%
 #------------------------------------------------------------------------------
-# SECTION 2 - IMPORT AND SLICE DATA
+# SECTION 2 - IMPORT AND PREPARE DATA
+
+# Image processing essentially means carrying out mathematical operations on images. For this purpose, it is useful to represent image data in orderly data structures called "arrays" for which many mathematical operations are well defined. Arrays are grids with rows and columns that are filled with numbers; in the case of image data, those numbers correspond to the pixel values of the image. Arrays can have any number of dimensions (or "axes"). For example, a 2D array could represent the x and y axis of a normal image, a 3D array could contain a z-stack (xyz), a 4D array could also have multiple channels for each image (xyzc) and a 5D array could have time on top of that (xyzct).
+
+# EXERCISE
+# We will now proceed to import the image data, verifying we get what we expect and specifying the data we will work with. Before you start, it makes sense to have a quick look at the data in Fiji/imagej so you know what you are working with.
 
 # Specify filename
 filename = "example_cells_1.tif"
@@ -47,7 +73,7 @@ img = io.imread(filename)             # Importing multi-color tif file
 # Check that everything is in order
 print type(img)     # Check that img is a variable of type ndarray
 print img.dtype     # Check data type is 8uint
-print "Loaded array has shape", img.shape                 # Printing array shape; 2 colors, 930 by 780 pixels
+print "Loaded array has shape", img.shape  # Printing array shape; 2 colors, 930 by 780 pixels
 
 # Show image
 plt.imshow(img[0,:,:],interpolation='none',cmap='gray')   # Showing one of the channels (notice "interpolation='none'"!)
@@ -59,13 +85,8 @@ green = img[0,:,:]
 
 #%%
 #------------------------------------------------------------------------------
-# SECTION 3 - PREPROCESSING AND SEGMENTATION OF CELLS:
+# SECTION 3 - PREPROCESSING AND SIMPLE CELL SEGMENTATION:
 #            (I) SMOOTHING AND (II) ADAPTIVE THRESHOLDING
-
-# It's standard to smoothen images to reduce technical noise - this improves
-# all subsequent image processing steps. Adaptive thresholding allows the
-# masking of foreground objects even if the background intensity varies across
-# the image.
 
 # -------
 # Part I
@@ -79,53 +100,51 @@ green_smooth = ndi.filters.gaussian_filter(green,sigma)  # Perform smoothing
 plt.imshow(green_smooth,interpolation='none',cmap='gray')
 plt.show()
 
+
 # -------
 # Part II
 # -------
 
 # Create an adaptive background
-#struct = ndi.iterate_structure(ndi.generate_binary_structure(2,1),24)  # Create a diamond-shaped structural element
 struct = ((np.mgrid[:31,:31][0] - 15)**2 + (np.mgrid[:31,:31][1] - 15)**2) <= 15**2  # Create a disk-shaped structural element
-bg = ndi.filters.generic_filter(green_smooth,np.mean,footprint=struct) # Run a mean filter over the image using the disc
+from skimage.filters import rank            # Import module containing mean filter function
+bg = rank.mean(green_smooth, selem=struct)  # Run a mean filter over the image using the disc
 
 # Threshold using created background
-green_thresh = green_smooth >= bg
+green_mem = green_smooth >= bg
 
 # Clean by morphological hole filling
-green_thresh = ndi.binary_fill_holes(np.logical_not(green_thresh))
+green_mem = ndi.binary_fill_holes(np.logical_not(green_mem))
 
 # Show the result
-plt.imshow(green_thresh,interpolation='none',cmap='gray')
+plt.imshow(green_mem,interpolation='none',cmap='gray')
 plt.show()
 
 
 
 #%%
 #------------------------------------------------------------------------------
-# SECTION 4 - (SIDE NOTE: WE COULD BE DONE NOW)
-# If the data is very clean and/or we just want a quick look, we could simply
-# label all connected pixels now and consider the result our segmentation.
+# SECTION 4 - CONNECTED COMPONENTS LABELING (OR: "WE COULD BE DONE NOW")
+
+# If the data is clean and we just want a very quick cell or membrane segmentation, we could be done now. All we would still need to do is to label the individual cells - in other words, to give each separate "connected component" an individual number.
 
 # Labeling connected components
-green_components = ndi.label(green_thresh)[0] 
+green_components = ndi.label(green_mem)[0] 
 plt.imshow(green_components,interpolation='none', cmap='gray')    
 plt.show() 
 
-# However, to also partition the membranes to the cells, to generally improve  
-# the segmentatation (e.g. split cells that end up connected here) and to 
-# handle more complicated morphologies or to deal with lower quality data, 
-# this approach is not sufficient.
+# The result you get here should look not to bad but will likely still have some problems. For example, some cells will be connected because there were small gaps between them in the membrane. Also, the membranes themselves are not partitioned to the individual cells, so we cannot make measurements of membrane intensities for each cell. These problems can be resolved by means of a "seeding-expansion" strategy, which we will implement below.
 
 
 
 #%%
 #------------------------------------------------------------------------------
-# SECTION 5 - SEGMENTATION OF CELLS CONTINUED: (I) SEEDING BY DISTANCE TRANSFORM AND (II) EXPANSION BY WATERSHED
-
-# More advanced segmentation is usually a combination of seeding and expansion.
-# In seeding, we want to find a few pixels for each cell that we can assign to
-# said cell with great certainty. These 'seeds' are then expanded to partition
-# regions of the image where cell affiliation is less clear-cut.
+# SECTION 5 - IMPROVED CELL SEGMENTATION BY SEEDING AND EXPANSION: 
+#             (I) SEEDING BY DISTANCE TRANSFORM
+#             (II) EXPANSION BY WATERSHED
+#
+# Part I - Seeding refers to the identification of 'seeds', a few pixels that can assigned to each particular cell with great certainty. If available, a channel showing the cell nuclei is often used for seeding. However, using the membrane segmentation we have developed above, we can also generate relatively reliable seeds without the need to image nuclei.
+# Part II - The generated seeds are expanded into regions of the image where the cell assignment is less clear-cut than in the seed region itself. The goal is to expand each seed exactly up to the borders of the corresponding cell, resulting in a full segmentation. The watershed technique is the most common algorithm for expansion.
 
 # -------
 # Part I
@@ -134,7 +153,7 @@ plt.show()
 # Distance transform on thresholded membranes
 # Advantage of distance transform for seeding: It is quite robust to local 
 # "holes" in the membranes.
-green_dt= ndi.distance_transform_edt(green_thresh)
+green_dt= ndi.distance_transform_edt(green_mem)
 plt.imshow(green_dt,interpolation='none')
 plt.show()
 
@@ -154,17 +173,11 @@ plt.imshow(np.ma.array(green_max,mask=green_max==0),interpolation='none')
 plt.show()
 
 
-
 # -------
 # Part II
 # -------
 
-# Watershedding is a relatively simple but powerful algorithm for expanding
-# seeds. The image intensity is considered as a topographical map (with high
-# intensities being "mountains" and low intensities "valleys") and water is
-# poured into the valleys from each of the seeds. The water first labels the
-# lowest intensity pixels around the seeds, then continues to fill up. The cell
-# boundaries are where the waterfronts between different seeds touch.
+# Watershedding is a relatively simple but powerful algorithm for expanding seeds. The image intensity is considered as a topographical map (with high  intensities being "mountains" and low intensities "valleys") and water is poured into the valleys, starting from each of the seeds. The water first labels the lowest intensity pixels around the seeds, then continues to fill up. The cell boundaries (the 'mountains') are where the "waterfronts" between different seeds ultimately touch and stop expanding.
 
 # Get the watershed function and run it
 from skimage.morphology import watershed
@@ -176,21 +189,19 @@ plt.imshow(green_smooth,cmap='gray',interpolation='none')
 plt.imshow(green_ws,interpolation='none',alpha=0.7) 
 plt.show()
 
-# Notice that the previously connected cells are now mostly separated and the
-# membranes are partitioned to their respective cells. 
-# ...however, we now see a few cases of oversegmentation!
-# This is a typical example of the trade-offs one has to face in any 
-# computational classification task. 
+# OBSERVATION
+# Note that the previously connected cells are now mostly separated and the membranes are partitioned to their respective cells. Depending on the quality of the seeding, however, there may now be some cases of oversegmentation (a single cell split into multiple segmentation objects). This is a typical example of the trade-off between specificity and sensitivity one always has to face in computational classification tasks. As an advanced task, you can try to think of ways to fuse the wrongly oversegmented cells back together.   
 
 
 #%%
 #------------------------------------------------------------------------------
-# SECTION 6 - SEGMENTATION OF CELL EDGES: 
-# Finding cell edges is very useful for many purposes. In our example, edge
-# intensities are a measure of membrane intensities, which may be a desired
-# readout. The length of the edge (relative to cell size) is also a quite
-# informative feature about the cell shape. Finally, showing colored edges is
-# a nice way of visualizing segmentations.
+# SECTION 6 - IDENTIFICATION OF CELL EDGES
+
+# Now that we have a full cell segmentation, we can retrieve the cell edges, that is the pixels bordering neighboring cells. This is useful for many purposes; in our case, for example, edge intensities are a good measure of membrane intensity, which may be a desired readout. The length of the edge (relative to cell size) is also an informative feature about the cell shape. Finally, showing colored edges is a nice way of visualizing cell segmentations.
+
+# There are many ways of identifying edge pixels in a fully labeled segmentation. It can be done using erosion or dilation, for example, or it can be done in an extremely fast and fully vectorized way (for this, see "Vectorization" in the optional advanced content). Here, we use a slow but intuitive method that also serves to showcase the 'generic_filter' function in ndimage.
+
+# 'ndi.filters.generic_filter' is a powerful way of quickly iterating any function over numpy arrays (including functions that use a structuring element). 'generic_filter' iterates a structure element over all the values in an array and passes the corresponding values to a user-defined function. The result returned by this function is then allocated to the pixel in the image that corresponds to the origin of the se. Check the documentation to find out more about the arguments for 'generic_filter'.
 
 # Define the edge detection function
 def edge_finder(footprint_values):
@@ -217,13 +228,10 @@ plt.show()
 #------------------------------------------------------------------------------
 # SECTION 7 - POSTPROCESSING: REMOVING CELLS AT THE IMAGE BORDER
 
-# Segmentation is never perfect and it often makes sense to remove artefacts
-# afterwards. For example, one could filter out cells that are too
-# big, have a strange shape, or strange intensity values. Similarly, supervised 
-# machine learning can be used to identify cells of interest based on a 
-# combination of various features. 
+# Segmentation is never perfect and it often makes sense to remove artefacts afterwards. For example, one could filter out objects that are too small, have a very strange shape, or very strange intensity values. Note that this is equivalent to the removal of outliers in data analysis and should only be done for good reason and with caution.
 
-# Another example of cells that should be removed are those that are cut at the image boundary. This is what we will do now:
+# As an example of postprocessing, we will now filter out a particular group of problematic cells: those that are cut off at the image border.
+
 
 # Create a mask for the image boundary pixels
 boundary_mask = np.ones_like(green_ws)   # Initialize with all ones
@@ -252,10 +260,17 @@ plt.show()
 #------------------------------------------------------------------------------
 # SECTION 8 - MEASUREMENTS: SINGLE-CELL AND MEMBRANE READOUTS
 
-# Now that the cells in the image are nicely segmented, we can quantify various
-# readouts for every cell individually. Readouts can be based on the intensity
-# in the original image, on intensities in other channels or on the size and
-# shape of the cells themselves.
+# Now that the cells and membranes in the image are segmented, we can quantify various readouts for every cell individually. Readouts can be based on the intensity in different channels in the original image or on the size and shape of the cells themselves.
+
+# To exemplify how different properties of cells can be measured, we will quantify the following:
+    # Cell ID (so all other measurements can be traced back to the cell that was measured)
+    # Mean intensity of each cell, for each channel
+    # Mean intensity at the membrane of each cell, for each channel
+    # The cell size, in terms of the number of pixels that make up the cell
+    # The cell outline length, in terms of the number of pixels that make up the cell boundary
+
+# We will use a dictionary to collect all the information in an orderly fashion.
+
 
 # Initialize a dict for results of choice
 results = {"cell_id":[], "green_mean":[], "red_mean":[],"green_membrane_mean":[], 
@@ -279,29 +294,22 @@ for cell_id in np.unique(green_ws)[1:]:
     results["cell_outline"].append(np.sum(edge_mask))
 
 
-#%%
+#%%    
 #------------------------------------------------------------------------------
-# SECTION 9 - ANALYSIS AND EXPORTING OUTPUT OF PROGRAM
+# SECTION 9 - SIMPLE ANALYSIS AND VISUALIZATION
 
-# MOTIVATION
-# Now that you have collected the readouts to a dict, you can analyse them, by 
-# printing out the results, mapping some of the readouts back to the image, 
-# e.g. the cells' size or membranes, doing statistical analysis of the data, 
-# such as making boxplots, scatter plots and fitting a line to the data and 
-# analysing the line.
+# Now that you have collected the readouts to a dictionary you can analyse them in any way you wish. This section shows how to do basic plotting and analysis of the results, including mapping the data back onto the image (as a 'heatmap') and producing boxplots, scatterplots and a linear fit. A more in-depth example of how to couple image analysis into advanced data analysis can be found in 'data_analysis' in the 'optional_advanced_material' directory.
 
 
 # (i) Print out the results you want to see
 for key in results.keys():
     print "\n" + key
     print results[key]
-    
 
 
 # (ii) Make box plots of the cell and membrane intensities, for both channels.
 plt.boxplot([results[key] for key in results.keys()][2:-1],labels=results.keys()[2:-1])
 plt.show()
-
 
 
 # (iii) 
@@ -312,13 +320,11 @@ from scipy import stats
 
     # Linear fit of cell size vs membrane intensity
 linfit = stats.linregress(results["cell_size"],results["red_membrane_mean"]) 
-        
-        
+                
     # Make scatter plot. 
 plt.scatter(results["cell_size"],results["red_membrane_mean"])
 plt.xlabel("cell size")
 plt.ylabel("red_membrane_mean")
-
 
     # Define the equation of the line that fits the data, using an anonymous function
 fit = lambda x: linfit[0] * x + linfit[1]
@@ -355,8 +361,7 @@ plt.imshow(np.ma.array(size_map,mask=size_map==0),interpolation='none',alpha=0.7
 plt.show()
 
 
-
-# (vii)
+# (vi)
 # Note that this seems to return a highly significant p-value but a very low
 # correlation coefficient (r-value). We also would not expect this correlation
 # to be present in our data. This should prompt several considerations:

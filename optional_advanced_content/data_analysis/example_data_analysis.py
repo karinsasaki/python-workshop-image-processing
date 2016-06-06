@@ -45,7 +45,7 @@ Created on Sat Mar 12 16:28:01 2016
 
 @requires:  Python 2.7
             NumPy 1.9, scikit-image 0.11.3, matplotlib 1.5.1
-            SciPy 0.16.0, scikit-learn 0.15.2, networksx 1.9.1
+            SciPy 0.16.0, scikit-learn 0.15.2, networkx 1.9.1
 """
 
 

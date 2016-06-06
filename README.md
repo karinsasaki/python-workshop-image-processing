@@ -2,7 +2,7 @@ Python Workshop - Image Processing
 ===================================
 
 
-### Course concepts
+# Course concepts
 
 *Aims:*
 A. Learn how to automate the processing and analysis of images by Python scripting
@@ -36,7 +36,7 @@ Python Workshop - Image Processing
 
 		
 
-### Instructors
+# Instructors
 - Karin Sasaki
     - EMBL Centre for Biological Modelling
     - Organiser of course, practical materials preparation, tutor, TA
@@ -58,3 +58,13 @@ Python Workshop - Image Processing
 - Imre Gaspar
     - Staff scientists at the Ephrussi group
     - TA (programming/image processing)
+
+
+# Instructions
+- Start with the pre-tutorial folder. There you will find three tutorials, one on numpy and arrays, one on python functions and one on a short image processing pipeline.
+- Next, from the main tutorial folder, follow the pipeline first and then the batch pipeline. You have a choice of looking at a version with partial solutions, for both tutorials. This folder also contains the full solutions and original pipeline from which the tutorials were adapted.
+- Finally, the advanced content has pipelines in cluster computation, data analysis, multi processing and vectorisation. These files are not in tutorial format and are provided as examples.
+
+
+# Feedback 
+We welcome any feedback on this course! 
