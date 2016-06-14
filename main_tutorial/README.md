@@ -13,7 +13,7 @@ Segmentation of 2D spinning-disc confocal fluorescence microscopy images of a me
 ### REQUIREMENTS
 - Python 2.7 (we recommend the Anaconda distribution, which includes most of the required modules)
 - Modules: NumPy, SciPy, scikit-image, tifffile
-- A text/code editor (we recommend Spyder-Py2)
+- A text/code editor 
 
 
 ### HOW TO FOLLOW THIS TUTORIAL

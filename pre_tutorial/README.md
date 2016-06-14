@@ -8,9 +8,9 @@ This course assumes a basic knowledge of the Python Programming Language.
 
 
 ### REQUIREMENTS
-- Anaconda distribution
-- Python 2.7
-- Jupyter  
+- Python 2.7 (we recommend the Anaconda distribution, which includes most of the required modules)
+- Modules: NumPy, SciPy, scikit-image, tifffile
+- A text/code editor 
 
 
 ### PROGRAMMING CONCEPTS AND CONTENT DISCUSSED IN THIS TUTORIAL
