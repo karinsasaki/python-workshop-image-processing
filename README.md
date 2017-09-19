@@ -1,6 +1,8 @@
 Python Workshop - Image Processing
 ===================================
 
+**Please note that a new and improved version of the materials for this course is available [here](https://github.com/WhoIsJack/python-workshop-image-processing)!**
+
 
 ## Course Aims and Overview
 
